@@ -76,11 +76,13 @@ class EditArea(TextArea):
 
 class InterleaveArea(TextArea):
     areas: List[EditArea]
+    show_pipes: bool
 
     def __init__(self, *areas):
         super().__init__()
         self.read_only = True
         self.areas = areas
+        self.show_pipes = True
 
     def update(self) -> None:
         maxlen = max(len(area.text) for area in self.areas)
@@ -89,6 +91,14 @@ class InterleaveArea(TextArea):
         for i in range(0, maxlen, w):
             for area in self.areas:
                 text.append(area.text[i : i + w])
+            if self.show_pipes:
+                pipeline = ""
+                for b in self.app.keystream[i : i + w]:
+                    if b & (64 + 32) == (64 + 32):
+                        pipeline += "|"
+                    else:
+                        pipeline += " "
+                text.append(pipeline)
             text.append("")
         self.text = "\n".join(text)
 
@@ -97,12 +107,24 @@ class InterleaveArea(TextArea):
             self.update()
         return super().on_event(event)
 
+    def toggle_pipes(self):
+        """
+        Toggle whether to show pipes where the XOR result has the 32 and 64 bit set.
+        This is likely indicative of punctuation opposing a capital letter.
+        """
+        self.show_pipes = not self.show_pipes
+        self.update()
+
 
 class XOREditApp(App):
     top_area: EditArea
     bot_area: EditArea
     interleave_area: InterleaveArea
     keystream: List
+
+    BINDINGS = [
+        ("ctrl+t", "toggle_pipes", "Toggle word boundary heuristic."),
+    ]
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -128,6 +150,9 @@ class XOREditApp(App):
         dest.overwrite(index, new_val, emit=False)
         dest.update()
         self.interleave_area.update()
+
+    def action_toggle_pipes(self):
+        self.interleave_area.toggle_pipes()
 
 
 if __name__ == "__main__":
