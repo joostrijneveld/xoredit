@@ -1,10 +1,10 @@
 import argparse
 import string
-from typing import Any, Coroutine, List
+from typing import Any, Coroutine, List, Tuple
 
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
-from textual.document._document import EditResult, Selection
+from textual.document._document import EditResult, Location, Selection
 from textual.document._edit import Edit
 from textual.events import Event, Resize
 from textual.widgets import Footer, Static, TextArea
@@ -12,23 +12,100 @@ from textual.widgets import Footer, Static, TextArea
 PRINTABLE_BYTES = string.printable.replace("\x0b", "").replace("\x0c", "")
 PRINTABLE_BYTES = PRINTABLE_BYTES.encode("utf-8")
 OFFSET_DELTA = 5
+PLACEHOLDER = "_"
 
 
 class EditArea(TextArea):
     data: List
-    listeners: List
     position_footer: Static = None
 
     def __init__(self, data):
         self.data = [None] * len(data)
         self.position_footer = Static()
         super().__init__()
-        self.update()
+        self.text = PLACEHOLDER * len(data)
+
+    def fixup_and_edit(self, edit: Edit, emit=True):
+        """Update the backing data, insert appropriate placeholder."""
+        xf = edit.from_location[1]
+        xt = edit.to_location[1]
+        padding = xt - xf - len(edit.text)
+        # rebuild the backing data array, ensuring it stays the same length
+        assert xf + len(edit.text) + padding + (len(self.data) - xt) == len(self.data)
+        self.data = (
+            self.data[:xf]
+            + list(map(ord, edit.text))
+            + [None] * padding
+            + self.data[xt:]
+        )[: len(self.data)]
+        # add the appropriate padding to the edit.text
+        if emit:
+            app.spread_changes(self, edit)
+        edit.text = edit.text + padding * PLACEHOLDER
+        return self.edit(edit)
+
+    def insert(
+        self,
+        text: str,
+        location: Tuple[int] | None = None,
+        *,
+        maintain_selection_offset: bool = True,
+    ) -> EditResult:
+        if location is None:
+            location = self.cursor_location
+        end = location[0], location[1] + len(text)
+        return self.replace(
+            text, location, end, maintain_selection_offset=maintain_selection_offset
+        )
+
+    def delete(
+        self,
+        start: Tuple[int, int],
+        end: Tuple[int, int],
+        *,
+        maintain_selection_offset: bool = True,
+    ) -> EditResult:
+        """
+        Override delete operation;
+        - replace the contents rather than deleting
+        - maintain the correct cursor movement
+        """
+        # if the selection was done right-to-left, flip it
+        if start[1] > end[1]:
+            start, end = end, start
+        e = self.fixup_and_edit(Edit("", start, end, maintain_selection_offset))
+        self.move_cursor(start)
+        return e
+
+    def replace(
+        self,
+        insert: str,
+        start: Tuple[int],
+        end: Tuple[int],
+        *,
+        maintain_selection_offset: bool = True,
+    ) -> EditResult:
+        """Override replace so that it is always of fixed length."""
+        # if the selection was done right-to-left, flip it
+        if start[1] > end[1]:
+            start, end = end, start
+        # compute selection length
+        delta = end[1] - start[1]
+        # pad text to the length of the selection
+        pad_length = max(0, delta - len(insert))
+        # possibly increase `end`, if replacement is longer than selection
+        new_end = end[0], start[1] + len(insert) + pad_length
+        e = self.fixup_and_edit(Edit(insert, start, new_end, maintain_selection_offset))
+        # move cursor to end of insert, not end of selection
+        # TODO somehow this doesn't work correctly when replacing a long selection with a short insert;
+        #  the cursor will move to the end of th selection either way
+        self.move_cursor((start[0], start[1] + len(insert)))
+        return e
 
     @staticmethod
     def render_symbol(c):
         if c is None:
-            return "_"  # TODO make this gray to differentiate
+            return PLACEHOLDER
         if c == ord("\r"):
             return chr(0x21A9)
         if c == ord("\n"):
@@ -41,45 +118,28 @@ class EditArea(TextArea):
             return chr(0x25A2)
         return chr(c)
 
-    def update(self):
-        # TODO if we're using this function to flatten a newline, the cursor location will be destroyed
-        old_location = self.cursor_location
-        self.text = "".join(map(EditArea.render_symbol, self.data))
-        self.move_cursor(old_location)
-
-    def action_delete_left(self) -> None:
-        self.overwrite(self.cursor_location[1] - 1, None)
-        self.move_cursor(self.get_cursor_left_location())
-        self.update()
-
-    def action_delete_right(self) -> None:
-        self.overwrite(self.cursor_location[1], None)
-
-    def overwrite(self, index, v, emit=True):
-        # prevent out of bound overwrites
-        if index >= len(self.data):
-            return
-        self.data[index] = v
-        self.update()
-        if emit:
-            app.update(self, index, v)
+    @staticmethod
+    def clean_whitespace(s):
+        """Replace newlines by unicode symbols, etc."""
+        return "".join(EditArea.render_symbol(ord(c)) for c in s)
 
     def edit(self, edit: Edit) -> EditResult:
-        _, x_f = edit.from_location
+        # prevent exceeding length of data
+        y_f, x_f = edit.from_location
         y_t, x_t = edit.to_location
-        # prevent attempts to edit out of bounds
-        if x_t > len(edit.text):
-            edit.to_location = (y_t, x_t)
-        for i, c in enumerate(edit.text):
-            self.overwrite(x_f + i, ord(c))
-        edit.to_location = (_, x_t + 1)
-        super().edit(edit)
-        # to fix, e.g., inserted newlines
-        self.update()
+        bound = len(self.data)
+        if x_t > bound:
+            edit.to_location = (y_t, bound)
+        if x_f + len(edit.text) > bound:
+            edit.text = edit.text[: bound - x_f]
+        edit.text = EditArea.clean_whitespace(edit.text)
+        return super().edit(edit)
 
     def watch_selection(
         self, previous_selection: Selection, selection: Selection
     ) -> None:
+        """Update footer whenever selection property changes.
+        The selection is updated whenever the cursor is moved."""
         if self.has_focus:
             self.update_position_footer(selection.start[1])
 
@@ -103,7 +163,7 @@ class InterleaveArea(TextArea):
         self.read_only = True
         self.areas = areas
 
-    def update(self) -> None:
+    def populate(self) -> None:
         maxlen = max(len(area.text) for area in self.areas)
         # account for scroll bar
         w = self.size.width - 3
@@ -133,7 +193,7 @@ class InterleaveArea(TextArea):
 
     def on_event(self, event: Event) -> Coroutine[Any, Any, None]:
         if isinstance(event, Resize):
-            self.update()
+            self.populate()
         return super().on_event(event)
 
     def toggle_pipes(self):
@@ -142,7 +202,7 @@ class InterleaveArea(TextArea):
         This is likely indicative of punctuation opposing a capital letter.
         """
         self.show_pipes = not self.show_pipes
-        self.update()
+        self.populate()
 
     def toggle_offsets(self):
         """
@@ -150,7 +210,7 @@ class InterleaveArea(TextArea):
         This is likely indicative of punctuation opposing a capital letter.
         """
         self.show_offsets = not self.show_offsets
-        self.update()
+        self.populate()
 
 
 class XOREditApp(App):
@@ -180,17 +240,22 @@ class XOREditApp(App):
         self.interleave_area = InterleaveArea(self.top_area, self.bot_area)
         self.keystream = [a ^ b for a, b in zip(c1, c2)]
 
-    def update(self, source, index, v):
+    def spread_changes(self, source: EditArea, edit: Edit):
         if source is self.bot_area:
             dest = self.top_area
         else:
             dest = self.bot_area
-        new_val = None
-        if v is not None and index < len(self.keystream):
-            new_val = self.keystream[index] ^ v
-        dest.overwrite(index, new_val, emit=False)
-        dest.update()
-        self.interleave_area.update()
+        keybytes = self.keystream[edit.from_location[1] : edit.to_location[1]]
+        newbytes = "".join([chr(ord(a) ^ k) for a, k in zip(edit.text, keybytes)])
+
+        e = Edit(
+            newbytes,
+            from_location=edit.from_location,
+            to_location=edit.to_location,
+            maintain_selection_offset=edit.maintain_selection_offset,
+        )
+        dest.fixup_and_edit(e, emit=False)
+        self.interleave_area.populate()
 
     def action_toggle_pipes(self):
         self.interleave_area.toggle_pipes()
