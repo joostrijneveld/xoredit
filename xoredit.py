@@ -3,7 +3,7 @@ from typing import Any, Coroutine, List, Tuple
 from textual.app import App, ComposeResult
 from textual.document._document import EditResult, Location
 from textual.document._edit import Edit
-from textual.events import Key
+from textual.events import Event, Key, Resize
 from textual.widgets import Header, Footer
 from textual.containers import ScrollableContainer
 from textual.widgets import Button, Footer, Header, Static, TextArea
@@ -24,7 +24,7 @@ class EditArea(TextArea):
     @staticmethod
     def render_symbol(c):
         if c is None:
-            return "_"
+            return "_"  # TODO make this gray to differentiate
         if c == ord("\r"):
             return chr(0x21A9)
         if c == ord("\n"):
@@ -56,9 +56,9 @@ class EditArea(TextArea):
         if index >= len(self.data):
             return
         self.data[index] = v
+        self.update()
         if emit:
             app.update(self, index, v)
-        self.update()
 
     def edit(self, edit: Edit) -> EditResult:
         _, x_f = edit.from_location
@@ -75,17 +75,27 @@ class EditArea(TextArea):
 
 
 class InterleaveArea(TextArea):
-    areas: List
+    areas: List[EditArea]
 
     def __init__(self, *areas):
         super().__init__()
         self.read_only = True
         self.areas = areas
 
-    def update(self):
-        # TODO render the text from the EditAreas, interleaving the lines
-        # requires figuring out the wrap width
-        ...
+    def update(self) -> None:
+        maxlen = max(len(area.text) for area in self.areas)
+        w = self.size.width - 1
+        text = []
+        for i in range(0, maxlen, w):
+            for area in self.areas:
+                text.append(area.text[i : i + w])
+            text.append("")
+        self.text = "\n".join(text)
+
+    def on_event(self, event: Event) -> Coroutine[Any, Any, None]:
+        if isinstance(event, Resize):
+            self.update()
+        return super().on_event(event)
 
 
 class XOREditApp(App):
