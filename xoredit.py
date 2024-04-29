@@ -1,13 +1,12 @@
 import argparse
 import string
-from typing import Any, Coroutine, List, Tuple
+from typing import Any, Coroutine, List
+
 from textual.app import App, ComposeResult
-from textual.document._document import EditResult, Location
+from textual.document._document import EditResult
 from textual.document._edit import Edit
-from textual.events import Event, Key, Resize
-from textual.widgets import Header, Footer
-from textual.containers import ScrollableContainer
-from textual.widgets import Button, Footer, Header, Static, TextArea
+from textual.events import Event, Resize
+from textual.widgets import Footer, Header, TextArea
 
 PRINTABLE_BYTES = string.printable.replace("\x0b", "").replace("\x0c", "")
 PRINTABLE_BYTES = PRINTABLE_BYTES.encode("utf-8")
