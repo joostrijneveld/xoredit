@@ -8,6 +8,7 @@ from textual.document._document import EditResult, Location, Selection
 from textual.document._edit import Edit
 from textual.events import Event, Resize
 from textual.widgets import Footer, Static, TextArea
+from textual.binding import Binding
 
 PRINTABLE_BYTES = string.printable.replace("\x0b", "").replace("\x0c", "")
 PRINTABLE_BYTES = PRINTABLE_BYTES.encode("utf-8")
@@ -27,8 +28,9 @@ class EditArea(TextArea):
 
     def fixup_and_edit(self, edit: Edit, emit=True):
         """Update the backing data, insert appropriate placeholder."""
-        xf = edit.from_location[1]
-        xt = edit.to_location[1]
+        yf, xf = edit.from_location
+        yt, xt = edit.to_location
+        assert yf == 0 and yt == 0, "Assuming we're working on line 0"
         padding = xt - xf - len(edit.text)
         # rebuild the backing data array, ensuring it stays the same length
         assert xf + len(edit.text) + padding + (len(self.data) - xt) == len(self.data)
@@ -42,6 +44,7 @@ class EditArea(TextArea):
         if emit:
             app.spread_edit(self, edit)
         edit.text = edit.text + padding * PLACEHOLDER
+        edit.text = EditArea.clean_whitespace(edit.text)
         return self.edit(edit)
 
     def insert(
@@ -138,7 +141,6 @@ class EditArea(TextArea):
             edit.to_location = (y_t, bound)
         if x_f + len(edit.text) > bound:
             edit.text = edit.text[: bound - x_f]
-        edit.text = EditArea.clean_whitespace(edit.text)
         return super().edit(edit)
 
     def watch_selection(
@@ -228,6 +230,12 @@ class XOREditApp(App):
     BINDINGS = [
         ("ctrl+t", "toggle_pipes", "Toggle word boundary heuristic."),
         ("ctrl+n", "toggle_offsets", "Toggle offset indicators."),
+        Binding(
+            "ctrl+x",
+            "exchange_selection",
+            "Swap selection between areas.",
+            priority=True,
+        ),
     ]
 
     def compose(self) -> ComposeResult:
@@ -246,10 +254,13 @@ class XOREditApp(App):
         self.interleave_area = InterleaveArea(self.top_area, self.bot_area)
         self.keystream = [a ^ b for a, b in zip(c1, c2)]
 
+    def other_area(self, area):
+        if area is self.bot_area:
+            return self.top_area
+        return self.bot_area
+
     def spread_edit(self, source: EditArea, edit: Edit):
-        if source is self.bot_area:
-            dest = self.top_area
-        dest = self.bot_area
+        dest = self.other_area(source)
         keybytes = self.keystream[edit.from_location[1] : edit.to_location[1]]
         newbytes = "".join([chr(ord(a) ^ k) for a, k in zip(edit.text, keybytes)])
 
@@ -261,6 +272,48 @@ class XOREditApp(App):
         )
         dest.fixup_and_edit(e, emit=False)
         self.interleave_area.populate()
+
+    def action_exchange_selection(self):
+        source = self.focused
+        if not isinstance(source, EditArea):
+            return
+        dest = self.other_area(source)
+        start, end = source.selection.start, source.selection.end
+        assert start[0] == 0 and end[0] == 0, "Assuming we're working on line 0"
+        # if the selection was done right-to-left, flip it
+        if start[1] > end[1]:
+            start, end = end, start
+        # distinguish between cases: do not move the cursor when swapping single characters
+        cursor_end = end
+        if start == end:
+            end = end[0], end[1] + 1
+        # ensure the selection fits for both areas
+        end = end[0], min(end[1], len(dest.text))
+        # swap the displayed text
+        source_edit = Edit(
+            dest.get_text_range(start, end),
+            from_location=start,
+            to_location=end,
+            maintain_selection_offset=False,
+        )
+        dest_edit = Edit(
+            source.get_text_range(start, end),
+            from_location=start,
+            to_location=end,
+            maintain_selection_offset=False,
+        )
+        source.edit(source_edit)
+        dest.edit(dest_edit)
+        # swap the backing bytes
+        t = source.data[start[1] : end[1]]
+        source.data = (
+            source.data[: start[1]]
+            + dest.data[start[1] : end[1]]
+            + source.data[end[1] :]
+        )
+        dest.data = dest.data[: start[1]] + t + dest.data[end[1] :]
+        # move the cursor appropriately; in particular when swapping without selection
+        source.move_cursor(cursor_end)
 
     def action_toggle_pipes(self):
         self.interleave_area.toggle_pipes()
