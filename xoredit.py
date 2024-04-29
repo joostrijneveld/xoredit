@@ -40,7 +40,7 @@ class EditArea(TextArea):
         )[: len(self.data)]
         # add the appropriate padding to the edit.text
         if emit:
-            app.spread_changes(self, edit)
+            app.spread_edit(self, edit)
         edit.text = edit.text + padding * PLACEHOLDER
         return self.edit(edit)
 
@@ -101,6 +101,12 @@ class EditArea(TextArea):
         #  the cursor will move to the end of th selection either way
         self.move_cursor((start[0], start[1] + len(insert)))
         return e
+
+    def redo(self, emit=True) -> None:
+        pass
+
+    def undo(self, emit=True) -> None:
+        pass
 
     @staticmethod
     def render_symbol(c):
@@ -240,11 +246,10 @@ class XOREditApp(App):
         self.interleave_area = InterleaveArea(self.top_area, self.bot_area)
         self.keystream = [a ^ b for a, b in zip(c1, c2)]
 
-    def spread_changes(self, source: EditArea, edit: Edit):
+    def spread_edit(self, source: EditArea, edit: Edit):
         if source is self.bot_area:
             dest = self.top_area
-        else:
-            dest = self.bot_area
+        dest = self.bot_area
         keybytes = self.keystream[edit.from_location[1] : edit.to_location[1]]
         newbytes = "".join([chr(ord(a) ^ k) for a, k in zip(edit.text, keybytes)])
 
