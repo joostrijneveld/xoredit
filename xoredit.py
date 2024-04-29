@@ -6,11 +6,11 @@ from textual.app import App, ComposeResult
 from textual.document._document import EditResult
 from textual.document._edit import Edit
 from textual.events import Event, Resize
-from textual.widgets import Footer, Header, TextArea
+from textual.widgets import Footer, TextArea
 
 PRINTABLE_BYTES = string.printable.replace("\x0b", "").replace("\x0c", "")
 PRINTABLE_BYTES = PRINTABLE_BYTES.encode("utf-8")
-
+OFFSET_DELTA = 5
 
 class EditArea(TextArea):
     data: List
@@ -76,19 +76,27 @@ class EditArea(TextArea):
 
 class InterleaveArea(TextArea):
     areas: List[EditArea]
-    show_pipes: bool
+    show_pipes: bool = True
+    show_offsets: bool = True
 
     def __init__(self, *areas):
         super().__init__()
         self.read_only = True
         self.areas = areas
-        self.show_pipes = True
 
     def update(self) -> None:
         maxlen = max(len(area.text) for area in self.areas)
+        # TODO account for scroll bar
         w = self.size.width - 1
         text = []
         for i in range(0, maxlen, w):
+            if self.show_offsets:
+                pad_len = (OFFSET_DELTA - (i % OFFSET_DELTA)) % OFFSET_DELTA
+                offsets = " " * pad_len
+                # don't show the last offset on a line, as it'll overflow
+                for j in range(0, w - OFFSET_DELTA, OFFSET_DELTA):
+                    offsets += f'{pad_len + i + j:<5}'
+                text.append(offsets)
             for area in self.areas:
                 text.append(area.text[i : i + w])
             if self.show_pipes:
@@ -99,6 +107,7 @@ class InterleaveArea(TextArea):
                     else:
                         pipeline += " "
                 text.append(pipeline)
+            text.append("")
             text.append("")
         self.text = "\n".join(text)
 
@@ -116,6 +125,15 @@ class InterleaveArea(TextArea):
         self.update()
 
 
+    def toggle_offsets(self):
+        """
+        Toggle whether to show pipes where the XOR result has the 32 and 64 bit set.
+        This is likely indicative of punctuation opposing a capital letter.
+        """
+        self.show_offsets = not self.show_offsets
+        self.update()
+
+
 class XOREditApp(App):
     top_area: EditArea
     bot_area: EditArea
@@ -124,6 +142,7 @@ class XOREditApp(App):
 
     BINDINGS = [
         ("ctrl+t", "toggle_pipes", "Toggle word boundary heuristic."),
+        ("ctrl+n", "toggle_offsets", "Toggle offset indicators."),
     ]
 
     def compose(self) -> ComposeResult:
@@ -153,6 +172,9 @@ class XOREditApp(App):
 
     def action_toggle_pipes(self):
         self.interleave_area.toggle_pipes()
+
+    def action_toggle_offsets(self):
+        self.interleave_area.toggle_offsets()
 
 
 if __name__ == "__main__":
