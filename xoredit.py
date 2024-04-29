@@ -89,15 +89,15 @@ class InterleaveArea(TextArea):
 
 
 class XOREditApp(App):
-    bot_area: EditArea
     top_area: EditArea
+    bot_area: EditArea
     interleave_area: InterleaveArea
     keystream: List
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield self.bot_area
         yield self.top_area
+        yield self.bot_area
         yield self.interleave_area
         yield Footer()
 
