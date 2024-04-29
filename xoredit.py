@@ -3,21 +3,25 @@ import string
 from typing import Any, Coroutine, List
 
 from textual.app import App, ComposeResult
-from textual.document._document import EditResult
+from textual.containers import Vertical
+from textual.document._document import EditResult, Selection
 from textual.document._edit import Edit
 from textual.events import Event, Resize
-from textual.widgets import Footer, TextArea
+from textual.widgets import Footer, Static, TextArea
 
 PRINTABLE_BYTES = string.printable.replace("\x0b", "").replace("\x0c", "")
 PRINTABLE_BYTES = PRINTABLE_BYTES.encode("utf-8")
 OFFSET_DELTA = 5
 
+
 class EditArea(TextArea):
     data: List
     listeners: List
+    position_footer: Static = None
 
     def __init__(self, data):
         self.data = [None] * len(data)
+        self.position_footer = Static()
         super().__init__()
         self.update()
 
@@ -73,6 +77,21 @@ class EditArea(TextArea):
         # to fix, e.g., inserted newlines
         self.update()
 
+    def watch_selection(
+        self, previous_selection: Selection, selection: Selection
+    ) -> None:
+        if self.has_focus:
+            self.update_position_footer(selection.start[1])
+
+    def update_position_footer(self, position):
+        self.position_footer.update(f"Cursor offset: {position}")
+
+    def on_focus(self):
+        self.update_position_footer(self.cursor_location[1])
+
+    def on_blur(self):
+        self.position_footer.update("")
+
 
 class InterleaveArea(TextArea):
     areas: List[EditArea]
@@ -95,7 +114,7 @@ class InterleaveArea(TextArea):
                 offsets = " " * pad_len
                 # don't show the last offset on a line, as it'll overflow
                 for j in range(0, w - OFFSET_DELTA, OFFSET_DELTA):
-                    offsets += f'{pad_len + i + j:<5}'
+                    offsets += f"{pad_len + i + j:<5}"
                 text.append(offsets)
             for area in self.areas:
                 text.append(area.text[i : i + w])
@@ -124,7 +143,6 @@ class InterleaveArea(TextArea):
         self.show_pipes = not self.show_pipes
         self.update()
 
-
     def toggle_offsets(self):
         """
         Toggle whether to show pipes where the XOR result has the 32 and 64 bit set.
@@ -146,9 +164,12 @@ class XOREditApp(App):
     ]
 
     def compose(self) -> ComposeResult:
-        yield Header()
-        yield self.top_area
-        yield self.bot_area
+        with Vertical():
+            yield self.top_area
+            yield self.top_area.position_footer
+        with Vertical():
+            yield self.bot_area
+            yield self.bot_area.position_footer
         yield self.interleave_area
         yield Footer()
 
