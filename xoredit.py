@@ -105,16 +105,17 @@ class InterleaveArea(TextArea):
 
     def update(self) -> None:
         maxlen = max(len(area.text) for area in self.areas)
-        # TODO account for scroll bar
-        w = self.size.width - 1
+        # account for scroll bar
+        w = self.size.width - 3
         text = []
         for i in range(0, maxlen, w):
             if self.show_offsets:
                 pad_len = (OFFSET_DELTA - (i % OFFSET_DELTA)) % OFFSET_DELTA
                 offsets = " " * pad_len
-                # don't show the last offset on a line, as it'll overflow
-                for j in range(0, w - OFFSET_DELTA, OFFSET_DELTA):
-                    offsets += f"{pad_len + i + j:<5}"
+                for j in range(0, w, OFFSET_DELTA):
+                    # don't show the last offset on a line, as it'll overflow
+                    if len(offsets) < w - 5:
+                        offsets += f"{pad_len + i + j:<5}"
                 text.append(offsets)
             for area in self.areas:
                 text.append(area.text[i : i + w])
