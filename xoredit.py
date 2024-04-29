@@ -1,3 +1,4 @@
+import argparse
 import string
 from typing import Any, Coroutine, List, Tuple
 from textual.app import App, ComposeResult
@@ -131,11 +132,23 @@ class XOREditApp(App):
 
 
 if __name__ == "__main__":
-    with open("c1.bin", "rb") as c1f:
-        c1 = c1f.read()
-    with open("c2.bin", "rb") as c2f:
-        c2 = c2f.read()
+    parser = argparse.ArgumentParser(
+        description="Assist in cryptanalysis of ciphertexts that result from an XOR encryption using a repeated key stream.",
+    )
+
+    parser.add_argument(
+        "files",
+        metavar="FILE",
+        nargs=2,
+        help="Binary file containing one of the two ciphertexts.",
+    )
+    args = parser.parse_args()
+
+    ciphertexts = []
+    for fname in args.files:
+        with open(fname, "rb") as f:
+            ciphertexts.append(f.read())
 
     app = XOREditApp()
-    app.load_data(c1, c2)
+    app.load_data(*ciphertexts)
     app.run()
