@@ -1,4 +1,6 @@
 import argparse
+import json
+from pathlib import Path
 import string
 from typing import Any, Coroutine, List, Tuple
 
@@ -230,15 +232,23 @@ class XOREditApp(App):
     interleave_area: InterleaveArea
     keystream: List
 
+    CSS = """
+    InterleaveArea {
+        height: 50%;
+    }
+    """
+
     BINDINGS = [
-        ("ctrl+t", "toggle_pipes", "Toggle word boundary heuristic."),
-        ("ctrl+n", "toggle_offsets", "Toggle offset indicators."),
         Binding(
             "ctrl+x",
             "exchange_selection",
-            "Swap selection between areas.",
+            "Swap selection.",
             priority=True,
         ),
+        ("ctrl+t", "toggle_pipes", "Toggle word boundary heuristic."),
+        ("ctrl+n", "toggle_offsets", "Toggle offset indicators."),
+        ("ctrl+o", "open_from_save", "Open."),
+        ("ctrl+s", "save", "Save."),
     ]
 
     def compose(self) -> ComposeResult:
@@ -326,6 +336,35 @@ class XOREditApp(App):
     def action_toggle_offsets(self):
         self.interleave_area.toggle_offsets()
 
+    def action_save(self):
+        with open(self.save_path, 'w') as f:
+            saved_data = {
+                'keystream': self.keystream,
+                'top_area': {
+                    'text': self.top_area.text,
+                    'data': self.top_area.data,
+                },
+                'bot_area': {
+                    'text': self.bot_area.text,
+                    'data': self.bot_area.data,
+                },
+            }
+            json.dump(saved_data, f)
+            self.notify(f"File {self.save_path} saved!")
+    
+    def action_open_from_save(self):
+        if self.save_path.exists():
+            with open(self.save_path, 'r') as f:
+                saved_data = json.load(f)
+            self.keystream = saved_data['keystream']
+            self.top_area.text = saved_data['top_area']['text']
+            self.bot_area.text = saved_data['bot_area']['text']
+            self.top_area.data = saved_data['top_area']['data']
+            self.bot_area.data = saved_data['bot_area']['data']
+            self.interleave_area.populate()
+            self.notify(f"Loaded state from file {self.save_path}.")
+        else:
+            self.notify("No saved file to open. Save using ctrl+s.", severity="error")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -346,5 +385,6 @@ if __name__ == "__main__":
             ciphertexts.append(f.read())
 
     app = XOREditApp()
+    app.save_path = Path(".xoredit-save.json")
     app.load_data(*ciphertexts)
     app.run()
