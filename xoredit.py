@@ -105,11 +105,14 @@ class EditArea(TextArea):
         self.move_cursor((start[0], start[1] + len(insert)))
         return e
 
-    def redo(self, emit=True) -> None:
-        pass
+    def redo(self) -> None:
+        pass  # disabled to avoid confusion; don't have this working yet
 
-    def undo(self, emit=True) -> None:
-        pass
+    def undo(self) -> None:
+        pass  # disabled to avoid confusion; don't have this working yet
+
+    def action_delete_line(self) -> None:
+        pass  # disabled to avoid confusion
 
     @staticmethod
     def render_symbol(c):
