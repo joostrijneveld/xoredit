@@ -288,7 +288,9 @@ class XOREditApp(App):
         if start == end:
             end = end[0], end[1] + 1
         # ensure the selection fits for both areas
-        end = end[0], min(end[1], len(dest.text))
+        if start[1] >= len(dest.data):
+            return
+        end = end[0], min(end[1], len(dest.data))
         # swap the displayed text
         source_edit = Edit(
             dest.get_text_range(start, end),
