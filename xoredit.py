@@ -1,16 +1,16 @@
 import argparse
 import json
-from pathlib import Path
 import string
+from pathlib import Path
 from typing import Any, Coroutine, List, Tuple
 
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
-from textual.document._document import EditResult, Location, Selection
+from textual.document._document import EditResult, Selection
 from textual.document._edit import Edit
 from textual.events import Event, Resize
 from textual.widgets import Footer, Static, TextArea
-from textual.binding import Binding
 
 PRINTABLE_BYTES = string.printable.replace("\x0b", "").replace("\x0c", "")
 PRINTABLE_BYTES = PRINTABLE_BYTES.encode("utf-8")
@@ -342,34 +342,35 @@ class XOREditApp(App):
         self.interleave_area.toggle_offsets()
 
     def action_save(self):
-        with open(self.save_path, 'w') as f:
+        with open(self.save_path, "w") as f:
             saved_data = {
-                'keystream': self.keystream,
-                'top_area': {
-                    'text': self.top_area.text,
-                    'data': self.top_area.data,
+                "keystream": self.keystream,
+                "top_area": {
+                    "text": self.top_area.text,
+                    "data": self.top_area.data,
                 },
-                'bot_area': {
-                    'text': self.bot_area.text,
-                    'data': self.bot_area.data,
+                "bot_area": {
+                    "text": self.bot_area.text,
+                    "data": self.bot_area.data,
                 },
             }
             json.dump(saved_data, f)
             self.notify(f"File {self.save_path} saved!")
-    
+
     def action_open_from_save(self):
         if self.save_path.exists():
-            with open(self.save_path, 'r') as f:
+            with open(self.save_path, "r") as f:
                 saved_data = json.load(f)
-            self.keystream = saved_data['keystream']
-            self.top_area.text = saved_data['top_area']['text']
-            self.bot_area.text = saved_data['bot_area']['text']
-            self.top_area.data = saved_data['top_area']['data']
-            self.bot_area.data = saved_data['bot_area']['data']
+            self.keystream = saved_data["keystream"]
+            self.top_area.text = saved_data["top_area"]["text"]
+            self.bot_area.text = saved_data["bot_area"]["text"]
+            self.top_area.data = saved_data["top_area"]["data"]
+            self.bot_area.data = saved_data["bot_area"]["data"]
             self.interleave_area.populate()
             self.notify(f"Loaded state from file {self.save_path}.")
         else:
             self.notify("No saved file to open. Save using ctrl+s.", severity="error")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
