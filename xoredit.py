@@ -18,6 +18,32 @@ OFFSET_DELTA = 5
 PLACEHOLDER = "_"
 
 
+def render_symbol(c):
+    if c is None:
+        return PLACEHOLDER
+    if c == ord("\r"):
+        return chr(0x21A9)
+    if c == ord("\n"):
+        return chr(0x21B5)
+    if c == ord("\t"):
+        return chr(0x21E5)
+    if c == ord(" "):
+        return chr(0x2423)
+    if c not in PRINTABLE_BYTES:
+        return chr(0x25A2)
+    return chr(c)
+
+
+def clean_whitespace(s):
+    """Replace newlines by unicode symbols, etc."""
+    return "".join(render_symbol(ord(c)) for c in s)
+
+
+def data_to_cleaned_text(data):
+    """Replace newlines by unicode symbols, etc."""
+    return "".join(PLACEHOLDER if d is None else render_symbol(d) for d in data)
+
+
 class EditArea(TextArea):
     data: List
     position_footer: Static = None
@@ -46,7 +72,7 @@ class EditArea(TextArea):
         if emit:
             app.spread_edit(self, edit)
         edit.text = edit.text + padding * PLACEHOLDER
-        edit.text = EditArea.clean_whitespace(edit.text)
+        edit.text = clean_whitespace(edit.text)
         return self.edit(edit)
 
     def insert(
@@ -116,27 +142,6 @@ class EditArea(TextArea):
     def action_delete_line(self) -> None:
         pass  # disabled to avoid confusion
 
-    @staticmethod
-    def render_symbol(c):
-        if c is None:
-            return PLACEHOLDER
-        if c == ord("\r"):
-            return chr(0x21A9)
-        if c == ord("\n"):
-            return chr(0x21B5)
-        if c == ord("\t"):
-            return chr(0x21E5)
-        if c == ord(" "):
-            return chr(0x2423)
-        if c not in PRINTABLE_BYTES:
-            return chr(0x25A2)
-        return chr(c)
-
-    @staticmethod
-    def clean_whitespace(s):
-        """Replace newlines by unicode symbols, etc."""
-        return "".join(EditArea.render_symbol(ord(c)) for c in s)
-
     def edit(self, edit: Edit) -> EditResult:
         # prevent exceeding length of data
         y_f, x_f = edit.from_location
@@ -191,7 +196,7 @@ class InterleaveArea(TextArea):
                         offsets += f"{pad_len + i + j:<5}"
                 text.append(offsets)
             for area in self.areas:
-                text.append(area.text[i : i + w])
+                text.append(data_to_cleaned_text(area.data[i : i + w]))
             if self.show_pipes:
                 pipeline = ""
                 for b in self.app.keystream[i : i + w]:
