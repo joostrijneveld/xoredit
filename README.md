@@ -16,7 +16,7 @@ The tool was built using [Textualize](https://www.textualize.io). Install it dir
 pip install textual
 ```
 
-Start the tool by passing commandline arguments, specifying the file names of the two ciphertexts (as binary data).
+Start the tool by specifying the file names containing the two ciphertexts (as binary data) as command-line arguments.
 
 ```
 python xoredit.py c1.bin c2.bin
