@@ -8,7 +8,17 @@ By guessing so-called '[cribs](https://en.wikipedia.org/wiki/Known-plaintext_att
 
 ### Getting started
 
-The tool was built using [Textualize](https://www.textualize.io). Make sure to install using `pip install textual`.
+The tool was built using [Textualize](https://www.textualize.io). Install it directly, or using the `requirements.txt` file.
+
+```
+pip install textual
+```
+
+Start the tool by passing commandline arguments, specifying the file names of the two ciphertexts (as binary data).
+
+```
+python xoredit.py c1.bin c2.bin
+```
 
 ### Features
 
